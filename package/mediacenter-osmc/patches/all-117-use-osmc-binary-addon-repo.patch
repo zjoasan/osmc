@@ -14,7 +14,7 @@ index d286ad7b02..9715fce49c 100644
 +++ b/cmake/addons/bootstrap/repositories/binary-addons.txt
 @@ -1 +1 @@
 -binary-addons https://github.com/xbmc/repo-binary-addons.git Nexus
-+binary-addons https://github.com/osmc/repo-binary-addons.git Nexus
++binary-addons https://github.com/zjoasan/repo-binary-addons.git Nexus
 -- 
 2.25.1
 
