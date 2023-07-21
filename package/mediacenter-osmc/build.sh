@@ -157,8 +157,11 @@ then
 	VERSION_NUM=$(echo $VERSION_DBG | awk {'print $2'})
 	echo $VERSION_DBG >> files-debug/DEBIAN/control
 	echo "Depends: ${1}-mediacenter-osmc (=${VERSION_NUM})" >> files-debug/DEBIAN/control
+# -------
         git config --global user.name "Joakim Sandstrom"
         git config --global user.email "joakim.s@webbkontakt.net"
+        git config --global --add safe.directory *
+# -------
 	pushd src/xbmc-*
 	install_patch "../../patches" "all"
 	cp -ar ../../patches/resource.language.*/ addons/
