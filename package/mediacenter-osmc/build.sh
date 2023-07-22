@@ -110,6 +110,11 @@ then
 	handle_dep "libspdlog-dev"
 	handle_dep "libfmt-dev"
 	handle_dep "libudfread-dev"
+# -------
+        git config --global user.name "zjoasan"
+        git config --global user.email "joakim.s@webbkontakt.net"
+        git config --global --add safe.directory /mnt
+# -------
 	if [ "$1" == "rbp2" ] || [ "$1" == "rbp4" ]
 	then
 		handle_dep "rbp2-libcec-dev-osmc"
@@ -157,11 +162,6 @@ then
 	VERSION_NUM=$(echo $VERSION_DBG | awk {'print $2'})
 	echo $VERSION_DBG >> files-debug/DEBIAN/control
 	echo "Depends: ${1}-mediacenter-osmc (=${VERSION_NUM})" >> files-debug/DEBIAN/control
-# -------
-        git config --global user.name "Joakim Sandstrom"
-        git config --global user.email "joakim.s@webbkontakt.net"
-        git config --global --add safe.directory *
-# -------
 	pushd src/xbmc-*
 	install_patch "../../patches" "all"
 	cp -ar ../../patches/resource.language.*/ addons/
