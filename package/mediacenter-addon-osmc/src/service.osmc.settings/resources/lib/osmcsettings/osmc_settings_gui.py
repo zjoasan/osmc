@@ -13,7 +13,6 @@ import sys
 import threading
 import traceback
 from io import open
-from itertools import cycle
 
 import xbmc
 import xbmcaddon
@@ -21,6 +20,8 @@ import xbmcgui
 from osmccommon.osmc_language import LangRetriever
 from osmccommon.osmc_logging import StandardLogger
 from osmccommon.osmc_logging import clog
+from osmccommon.osmc_skin import apply_theme
+from osmccommon.osmc_skin import window_xml
 
 ADDON_ID = 'service.osmc.settings'
 
@@ -32,32 +33,31 @@ END_OF_LIFE_SHOWN = '/home/osmc/.end_of_life_message_shown'
 log = StandardLogger(ADDON_ID, os.path.basename(__file__)).log
 
 
+# The look of MyOSMC lives entirely in script-myosmc.xml. A skin can ship its
+# own copy of that file to restyle it; this module only supplies the data and
+# handles clicks. Keep these ids in step with the comment at the top of the xml.
+XML_FILE = 'script-myosmc.xml'
+CENTER_ID = 100       # closes MyOSMC (settings are applied on close)
+SLOT_BASE_ID = 101    # module slot n is control SLOT_BASE_ID + n
+ADVANCED_ID = 909     # Advanced Settings (beta)
+LIST_ID = 9000        # optional container for skins that prefer a list
+
+
 class OSMCGui(xbmcgui.WindowXMLDialog):
 
     def __init__(self, strXMLname, strFallbackPath, strDefaultName, **kwargs):
         super(OSMCGui, self).__init__(xmlFilename=strXMLname,
                                       scriptPath=strFallbackPath,
                                       defaultSkin=strDefaultName)
-        self.order_of_fill = kwargs.get('order_of_fill', [])
-        self.apply_buttons = kwargs.get('apply_buttons', [])
         self.live_modules = kwargs.get('live_modules', [])
 
         self._addon = kwargs.get('addon')
         self.window = kwargs.get('window', xbmcgui.Window(10000))
         self._lang = None
 
-        log(kwargs)
-
-        log(len(self.live_modules))
-
-        self.module_holder = {}
+        log('%d live modules' % len(self.live_modules))
 
         self.first_run = True
-
-        self.visible_left_label = 4915
-
-        self.number_of_pages = len(self.apply_buttons)
-        self.active_page = 1
 
     @property
     def addon(self):
@@ -89,195 +89,121 @@ class OSMCGui(xbmcgui.WindowXMLDialog):
 
         if self.first_run:
             self.first_run = False
+            self.populate()
 
-            # hide the unneeded control groups
-            contr = 200
-            while True:
-                try:
-                    self.getControl(contr).setVisible(False)
-                    contr += 100
-                except:
-                    break
+        self.set_focused(None)
 
-            # hide the left labels
-            self.getControl(4915).setLabel(self.lang(32002))
-            self.getControl(4915).setVisible(True)
-            self.visible_left_label = 4915
-            self.getControl(4916).setVisible(False)
+    def module_info(self, module):
+        """ Label, description and icons of a module, translated where possible """
+        instance = module['class_instance']
 
-            # hide next and prev if they aren't needed
-            if self.number_of_pages < 2:
-                self.getControl(4444).setVisible(False)
-                self.getControl(6666).setVisible(False)
+        label = getattr(instance, 'short_name', '') or ''
+        if isinstance(getattr(instance, 'short_name_i18n', None), int):
+            label = self.lang(instance.short_name_i18n)
 
-            # place the items into the gui
-            for i, module in enumerate(self.live_modules):
+        description = getattr(instance, 'description', '') or ''
+        if isinstance(getattr(instance, 'description_i18n', None), int):
+            description = self.lang(instance.description_i18n)
 
-                try:
-                    short_name = module['class_instance'].short_name
-                    if isinstance(module['class_instance'].short_name_i18n, int):
-                        short_name = self.lang(module['class_instance'].short_name_i18n)
-                except:
-                    short_name = ''
+        return {
+            'ID': module['id'],
+            'Label': label,
+            'Description': str(description),
+            'Icon': instance.unfocused_icon,
+            'FocusIcon': instance.focused_icon,
+        }
 
-                # set the icon (texturefocus, texturenofocus)
-                list_item = xbmcgui.ListItem(label=short_name, label2='', offscreen=True)
-                list_item.setArt({
-                    'icon': module['class_instance'].unfocused_icon,
-                    'thumb': module['class_instance'].unfocused_icon
-                })
-                list_item.setProperty('FO_ICON', module['class_instance'].focused_icon)
+    def populate(self):
+        """ Publish the modules as window properties, and as list items when
+            the skin's xml has a container with LIST_ID """
+        items = []
+        for slot, module in enumerate(self.live_modules):
+            info = self.module_info(module)
+            for key, value in info.items():
+                self.setProperty('MyOSMC.%d.%s' % (slot, key), value)
 
-                # grab the modules description for display in the textbox
-                # this is a TRY just in case the module doesnt have a self.description
-                try:
-                    description = module['class_instance'].description
-                    if isinstance(module['class_instance'].description_i18n, int):
-                        description = self.lang(module['class_instance'].description_i18n)
-                except:
-                    description = ''
+            list_item = xbmcgui.ListItem(label=info['Label'], label2=info['Description'], offscreen=True)
+            list_item.setArt({'icon': info['Icon'], 'thumb': info['Icon']})
+            list_item.setProperty('ID', info['ID'])
+            list_item.setProperty('Slot', str(slot))
+            list_item.setProperty('FocusIcon', info['FocusIcon'])
+            list_item.setProperty('Description', info['Description'])
+            items.append(list_item)
 
-                list_item.setProperty('description', str(description))
+        self.setProperty('MyOSMC.Count', str(len(self.live_modules)))
 
-                control_id = self.order_of_fill[i]
+        try:
+            container = self.getControl(LIST_ID)
+        except RuntimeError:
+            container = None  # the skin's xml uses the slot buttons only
 
-                self.getControl(control_id).addItem(list_item)
+        if container is not None:
+            container.reset()
+            container.addItems(items)
 
-                self.module_holder[control_id] = module
+    def slot_for_control(self, control_id):
+        """ The module slot a control stands for, or None """
+        if control_id == LIST_ID:
+            try:
+                return int(self.getControl(LIST_ID).getSelectedItem().getProperty('Slot'))
+            except (RuntimeError, AttributeError, ValueError):
+                return None
 
-            # set up the apply buttons
-            for apply_button in self.apply_buttons:
-                # set the image
-                list_item = xbmcgui.ListItem(label='', label2='', offscreen=True)
-                list_item.setProperty('Action', "Apply")
+        slot = control_id - SLOT_BASE_ID
+        if 0 <= slot < len(self.live_modules):
+            return slot
+        return None
 
-                self.getControl(apply_button).addItem(list_item)
+    def set_focused(self, slot):
+        if slot is None:
+            self.setProperty('MyOSMC.Focused.Label', self.lang(32002))
+            self.setProperty('MyOSMC.Focused.Description', '')
+            return
+        self.setProperty('MyOSMC.Focused.Label', self.getProperty('MyOSMC.%d.Label' % slot))
+        self.setProperty('MyOSMC.Focused.Description', self.getProperty('MyOSMC.%d.Description' % slot))
 
-            self.setFocusId(105)
-
-            self.next_prev_direction_changer()
+    def onFocus(self, controlID):
+        self.set_focused(self.slot_for_control(controlID))
 
     def onAction(self, action):
-
-        # log(action)
-
-        action_id = action.getId()
-        focused_control = self.getFocusId()
-
-        if action_id in (10, 92):
+        if action.getId() in (xbmcgui.ACTION_PREVIOUS_MENU, xbmcgui.ACTION_NAV_BACK):
             self.close()
+            return
 
-        elif focused_control == 4444:
-
-            # previous menu
-            if self.active_page - 1 == 0:
-                new_page = self.number_of_pages
-            else:
-                new_page = self.active_page - 1
-
-            self.getControl(self.active_page * 100).setVisible(False)
-            self.getControl(new_page * 100).setVisible(True)
-
-            self.active_page = new_page
-
-            self.setFocusId((self.active_page * 100) + 5)
-
-        # self.next_prev_direction_changer()
-
-        elif focused_control == 6666:
-            # next menu
-            if (self.active_page + 1) > self.number_of_pages:
-                new_page = 1
-            else:
-                new_page = self.active_page + 1
-
-            self.getControl(self.active_page * 100).setVisible(False)
-            self.getControl(new_page * 100).setVisible(True)
-
-            self.active_page = new_page
-
-            self.setFocusId((self.active_page * 100) + 5)
+        # moving within a list container doesn't fire onFocus
+        if self.getFocusId() == LIST_ID:
+            self.set_focused(self.slot_for_control(LIST_ID))
 
     def onClick(self, controlID):
 
-        if not (controlID - 5) % 100:
-
+        if controlID == CENTER_ID:
             self.close()
 
-        elif controlID == 909:
+        elif controlID == ADVANCED_ID:
             # open the advanced settings beta addon
             xbmc.executebuiltin("RunAddon(script.advancedsettingsetter)")
 
         else:
+            slot = self.slot_for_control(controlID)
+            if slot is not None:
+                self.launch_module(self.live_modules[slot])
 
-            module = self.module_holder.get(controlID, {})
-            class_instance = module.get('class_instance', None)
+    @staticmethod
+    def launch_module(module):
+        class_instance = module.get('class_instance', None)
 
-            log('Checking instance: %s ' % str(class_instance))
-            try:
-                log(class_instance.is_alive())
-            except AttributeError:
-                return
+        log('Checking instance: %s ' % str(class_instance))
+        if class_instance is None:
+            return
 
-            if class_instance.is_alive():
-                class_instance.run()
-            else:
+        if class_instance.is_alive():
+            class_instance.run()
+        else:
+            class_instance = module['module_instance'].OSMCSettingClass()
+            class_instance.daemon = True
 
-                class_instance = module['module_instance'].OSMCSettingClass()
-                class_instance.setDaemon(True)
-
-                module['class_instance'] = class_instance
-                class_instance.start()
-
-    def left_label_toggle(self, control_id):
-        # toggles the left label which displays the focused module name
-        controls = cycle([4915, 4916])
-        new_label = self.getControl(control_id).getListItem(0).getLabel()
-
-        for control_id in controls:
-            if control_id != self.visible_left_label:
-                control = self.getControl(control_id)
-                control.setLabel(new_label)
-                control.setVisible(True)
-                self.visible_left_label = control_id
-                control = self.getControl(next(controls))
-                control.setVisible(False)
-                break
-
-    def onFocus(self, controlID):
-
-        # update the textbox 'description'
-        try:
-            self.getControl(2).setText(self.getControl(controlID).getSelectedItem().getProperty('description'))
-        except:
-            pass
-
-        module_icons = [101, 102, 103, 104, 105, 106, 107, 108, 109,
-                        201, 202, 203, 204, 205, 206, 207, 208, 209, ]
-
-        if controlID in module_icons:
-            self.left_label_toggle(controlID)
-
-    def next_prev_direction_changer(self):
-        """ Sets the direction (onLeft, onRight, etc) for the previous and next buttons in the gui """
-
-        prev_button = self.getControl(4444)
-        next_button = self.getControl(6666)
-
-        pos5 = self.getControl((self.active_page * 100) + 5)
-
-        try:
-            pos4 = self.getControl((self.active_page * 100) + 4)
-        except:
-            pos4 = pos5
-
-        try:
-            pos6 = self.getControl((self.active_page * 100) + 6)
-        except:
-            pos6 = pos5
-
-        prev_button.setNavigation(pos5, pos5, next_button, pos4)
-        next_button.setNavigation(pos5, pos5, pos6, prev_button)
+            module['class_instance'] = class_instance
+            class_instance.start()
 
 
 class GuiThread(threading.Thread):
@@ -303,16 +229,8 @@ class GuiThread(threading.Thread):
         }
 
         self.live_modules = []
-        self.number_of_pages_needed = 1
-        self.order_of_fill = []
-        self.apply_buttons = []
 
         self.module_tally = 1000
-
-        # order of addon hierarchy
-        # 105 is Apply
-        self.item_order = [104, 106, 102, 108, 101, 109, 103, 107]
-        self.apply_button = [105]
 
         self.gui = None
 
@@ -331,34 +249,19 @@ class GuiThread(threading.Thread):
             (module name, order): the order is the hierarchy of addons (which is used to
             determine the positions of addon in the gui)
         """
-        # window xml to use
-        try:
-            skin_height = int(xbmcgui.Window(10000).getProperty("SkinHeight"))
-        except ValueError:
-            skin_height = 720
-        xml = "settings_gui_720.xml" if skin_height < 1080 else "settings_gui.xml"
-
         # check if modules and services exist, add the ones that exist to the live_modules list
         ordered_live_modules = self.retrieve_modules()
-        ordered_live_modules.sort()
+        ordered_live_modules.sort(key=lambda x: x[0])
         self.live_modules = [x[1] for x in ordered_live_modules]
 
         # load the modules as widget entries
         self.load_widget_info()
 
-        # determine which order list is used, indexed to 0
-        self.number_of_pages_needed = (len(self.live_modules) // 9) + 1
-
-        log('number_of_pages_needed')
-        log(self.number_of_pages_needed)
-
-        self.order_of_fill = [item + (100 * x) for x in range(self.number_of_pages_needed) for item in self.item_order]
-        self.apply_buttons = [item + (100 * x) for x in range(self.number_of_pages_needed) for item in self.apply_button]
-
-        # instantiate the window
-        self.gui = OSMCGui(xml, self.script_path, 'Default', addon=self.addon, window=self.window,
-                           order_of_fill=self.order_of_fill, apply_buttons=self.apply_buttons,
-                           live_modules=self.live_modules)
+        # instantiate the window; Kodi uses the active skin's copy of XML_FILE
+        # if it has one, otherwise the Default one shipped with this add-on
+        # (or its -720 twin on 720p skins)
+        self.gui = OSMCGui(window_xml(XML_FILE, self.script_path), self.script_path, 'Default', addon=self.addon,
+                           window=self.window, live_modules=self.live_modules)
 
     def load_widget_info(self):
         """ Takes each live_module and loads the information required for it to be included in the MyOSMC widget into the Home window.
@@ -373,6 +276,7 @@ class GuiThread(threading.Thread):
             self.window.setProperty('MyOSMC.Module.%s.fo_icon' % i, module['class_instance'].focused_widget)
             self.window.setProperty('MyOSMC.Module.%s.fx_icon' % i, module['class_instance'].unfocused_widget)
             self.window.setProperty('MyOSMC.Module.%s.id' % i, module['id'])
+        self.window.setProperty('MyOSMC.Module.Count', str(len(self.live_modules)))
 
     def close(self):
         """
@@ -387,6 +291,8 @@ class GuiThread(threading.Thread):
         """
 
         log('Opening GUI')
+        # pick up colours a skin may have set since the window was built
+        apply_theme()
         # display the window
         self.gui.doModal()
 
@@ -415,15 +321,10 @@ class GuiThread(threading.Thread):
 
         log('Exiting GUI')
 
-        # set the GUI back to the default first page view
+        # start from the centre next time
         try:
-            self.gui.getControl(self.gui.active_page * 100).setVisible(False)
-            self.gui.getControl(100).setVisible(True)
-
-            self.gui.active_page = 1
-            self.gui.next_prev_direction_changer()
-            self.gui.setFocusId(105)
-        except:
+            self.gui.setFocusId(CENTER_ID)
+        except RuntimeError:
             pass
 
     @clog(log)
@@ -457,7 +358,7 @@ class GuiThread(threading.Thread):
 
             module_instance = __import__('%s.osmc.osmc_setting' % module_name, fromlist=[''])
             class_instance = module_instance.OSMCSettingClass()
-            class_instance.setDaemon(True)
+            class_instance.daemon = True
         except:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             log('OSMCSetting __ %s __ failed to import' % module_name)

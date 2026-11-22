@@ -18,6 +18,7 @@ import xbmcgui
 from osmccommon.osmc_language import LangRetriever
 from osmccommon.osmc_logging import StandardLogger
 from osmccommon.osmc_logging import clog
+from osmccommon.osmc_skin import window_xml
 
 ADDON_ID = "script.module.osmcsetting.apfstore"
 
@@ -121,9 +122,7 @@ class APFGui(xbmcgui.WindowXMLDialog):
             sel_pos = container.getSelectedPosition()
             sel_item = self.apf_dict[self.apf_order_list[sel_pos]]
 
-            xml = "APFAddonInfo_720OSMC.xml" \
-                if xbmcgui.Window(10000).getProperty("SkinHeight") == '720' \
-                else "APFAddonInfo_OSMC.xml"
+            xml = window_xml('script-myosmc-appstore-info.xml', self.path)
 
             self.addon_gui = AddonInfoGui(xml, self.path, 'Default',
                                           sel_item=sel_item, addon=self.addon)

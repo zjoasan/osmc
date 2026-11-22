@@ -18,6 +18,7 @@ import xbmcaddon
 import xbmcgui
 from osmccommon.osmc_language import LangRetriever
 from osmccommon.osmc_logging import StandardLogger
+from osmccommon.osmc_skin import window_xml
 
 ACTION_PREVIOUS_MENU = 10
 ACTION_NAV_BACK = 92
@@ -138,9 +139,7 @@ class RemoteGuiLauncher(object):
             # reconstruction of the local_confs
             local_confs = [construct_list_item(self.active_conf)] + local_confs
 
-        xml = "RemoteBrowser_720OSMC.xml" \
-            if xbmcgui.Window(10000).getProperty("SkinHeight") == '720' \
-            else "RemoteBrowser_OSMC.xml"
+        xml = window_xml('script-myosmc-remotes.xml', self.path)
 
         self.remote_gui = RemoteGui(xml, self.path, 'Default', local_confs=local_confs,
                                     active_conf=self.active_conf, addon=self.addon)
@@ -364,9 +363,7 @@ class RemoteGui(xbmcgui.WindowXMLDialog):
             subprocess.call(['sudo', 'ln', '-sf', self.remote_selection, LIRCD_PATH])
 
             # open test dialog
-            xml = "OSMC_remote_testing720.xml" \
-                if xbmcgui.Window(10000).getProperty("SkinHeight") == '720' \
-                else "OSMC_remote_testing.xml"
+            xml = window_xml('script-myosmc-remotes-test.xml', self.path)
 
             self.remote_test = RemoteTest(xml, self.path, 'Default', self.remote_selection)
             self.remote_test.doModal()

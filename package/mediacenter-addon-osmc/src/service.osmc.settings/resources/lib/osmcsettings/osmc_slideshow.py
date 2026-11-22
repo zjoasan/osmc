@@ -16,6 +16,7 @@ import xbmcaddon
 import xbmcgui
 from osmccommon.osmc_language import LangRetriever
 from osmccommon.osmc_logging import StandardLogger
+from osmccommon.osmc_skin import window_xml
 
 # LEFT ACTIONS
 ACTION_MOVE_LEFT = 1
@@ -92,9 +93,7 @@ class OSMCSlideshow(object):
         pass
 
     def create_slideshow(self, image_list):
-        xml = "osmc_slideshow_720.xml" \
-            if xbmcgui.Window(10000).getProperty("SkinHeight") == '720' \
-            else "osmc_slideshow.xml"
+        xml = window_xml('script-myosmc-slideshow.xml', self.path)
 
         return OSMCSlideshowGUI(xml, self.path, 'Default', image_list=image_list, addon=self.addon)
 

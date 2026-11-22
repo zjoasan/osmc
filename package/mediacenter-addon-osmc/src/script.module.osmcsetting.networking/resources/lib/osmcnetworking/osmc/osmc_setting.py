@@ -14,6 +14,7 @@ import xbmcaddon
 import xbmcgui
 from osmccommon import osmc_setting
 from osmccommon.osmc_logging import StandardLogger
+from osmccommon.osmc_skin import window_xml
 
 from .. import osmc_network
 from ..networking_gui import NetworkingGui
@@ -100,9 +101,7 @@ class OSMCSettingClass(osmc_setting.OSMCSettingClass):
     def run(self, use_preseed=False):
         log(self.addon_id)
 
-        xml = "network_gui_720.xml" \
-            if xbmcgui.Window(10000).getProperty("SkinHeight") == '720' \
-            else "network_gui.xml"
+        xml = window_xml('script-myosmc-network.xml', self.me.getAddonInfo('path'))
 
         self.gui = NetworkingGui(xml, self.me.getAddonInfo('path'), 'Default', addon=self.me)
         self.gui.set_use_preseed(use_preseed)

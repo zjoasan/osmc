@@ -25,6 +25,7 @@ import xbmcvfs
 from osmccommon.osmc_language import LangRetriever
 from osmccommon.osmc_logging import StandardLogger
 from osmccommon.osmc_logging import clog
+from osmccommon.osmc_skin import window_xml
 
 from .apf_class import APFListItem
 from .apf_gui import APFGui
@@ -377,9 +378,7 @@ class APFStore(object):
 
     @clog(logger=log)
     def create_apf_store_gui(self, apf_dict):
-        xml = "APFBrowser_720OSMC.xml" \
-            if xbmcgui.Window(10000).getProperty("SkinHeight") == '720' \
-            else "APFBrowser_OSMC.xml"
+        xml = window_xml('script-myosmc-appstore.xml', self.addon.getAddonInfo('path'))
 
         return APFGui(xml, self.addon.getAddonInfo('path'), 'Default',
                       apf_dict=apf_dict, addon=self.addon)
